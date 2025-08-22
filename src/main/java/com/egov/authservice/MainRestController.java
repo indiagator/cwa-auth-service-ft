@@ -1,14 +1,14 @@
 package com.egov.authservice;
 
+import io.github.resilience4j.retry.RetryConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-
 import java.time.Instant;
-import java.util.Optional;
-import java.util.Random;
+import java.util.*;
 
 @RestController
 @RequestMapping("api/v1")
@@ -17,10 +17,15 @@ public class MainRestController
     private static final Logger logger = LoggerFactory.getLogger(MainRestController.class);
 
     @Autowired
+    private RedisTemplate<String, Object> redisTemplate;
+
+    @Autowired
     CredentialRepository credentialRepository;
 
     @Autowired
     TokenRepository tokenRepository;
+    @Autowired
+    private RetryConfig retryConfig;
 
     @PostMapping("signup")
     public ResponseEntity<String> signup(@RequestBody Credential credential)
@@ -65,7 +70,8 @@ public class MainRestController
 
     @GetMapping("validate") // AUTHENTICATION OF REQUEST RETURNS A VALIDATED PRINCIPAL OBJECT
     public ResponseEntity<?> validateToken(@RequestHeader("Authorization") String tokenValue)
-    {
+    { // AOP - MICROMETER
+        // Aspected Oriented Programming - Micrometer does its job here [ trace + span generation
 
         logger.info("Request received to validate token: " + tokenValue);
         Optional<Token> token = tokenRepository.findById(tokenValue);
@@ -88,6 +94,33 @@ public class MainRestController
             return ResponseEntity.ok(principal);
 
         }
+    }
+
+    @GetMapping("get/users/{type}")
+    public ResponseEntity<List<String>> getUsersOfType(@PathVariable("type") String type)
+    {
+        logger.info("Request received to get users of type " + type);
+
+        String redisKey = "CUSTOM_LIST_" + type;
+        List<String> userList = new ArrayList<>();
+
+        // check for the data in the REDIS CACHE first
+        if (redisTemplate.hasKey(redisKey) && redisTemplate.opsForList().size(redisKey) > 0)
+        {
+            logger.info("Getting users of type " + type + " from Redis cache");
+            List<Object> cachedUserList = (List<Object>) redisTemplate.opsForList().range(redisKey, 0, -1);
+            userList = cachedUserList.stream().map(Object::toString).toList();
+        }
+        else
+        {
+            logger.info("Getting users of type " + type + " from the Database and putting it in Redis cache");
+            // if the cache is empty, fetch from the database
+            List<Credential> credentialList =  credentialRepository.findByType(type);
+            userList =  credentialList.stream().map(Credential::getPhone).toList();
+            userList.forEach(user -> redisTemplate.opsForList().leftPush(redisKey, user));
+        }
+
+        return ResponseEntity.ok(userList);
     }
 
 
