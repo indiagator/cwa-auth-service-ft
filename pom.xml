@@ -10,7 +10,7 @@
     </parent>
     <groupId>com.egov</groupId>
     <artifactId>auth-service</artifactId>
-    <version>dev-1</version>
+    <version>prod-2</version>
     <name>auth-service</name>
     <description>auth-service</description>
     <url/>

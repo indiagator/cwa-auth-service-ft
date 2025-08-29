@@ -31,6 +31,7 @@ public class MainRestController
     public ResponseEntity<String> signup(@RequestBody Credential credential)
     {
         credentialRepository.save(credential);
+            // publish a message into kafka about the new user signup | DOMAIN EVENT
         return ResponseEntity.ok("Credential saved successfully!");
     }
 
